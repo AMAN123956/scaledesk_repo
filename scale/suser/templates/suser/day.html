@@ -1,0 +1,35 @@
+{% extends 'suser/index.html' %}
+{% block content %}
+<h2 class="text-primary my-3">Daywise Details</h2>
+<table class="table mt-5 shadow">
+    <thead>
+      <tr>
+        <th scope="col">Unique_Id</th>
+        <th scope="col">Book_Name</th>
+        <th scope="col">User</th>
+        <th scope="col">Issue_Date</th>
+        <th scope="col">Return</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for j in day %}
+      <tr>
+        <th scope="row">{{ j.book_inventry.book_uniqueid }}</th>
+        <td>{{ j.book_inventry.book.book_name }}</td>
+        <td>{{ j.user_id.first_name }}</td>
+        <td>{{ j.issue_day }}</td>
+        {% if j.checkback is None %}
+        <td><a href="{% url 'returnB' %}?id={{j.pk}}" class="btn btn-primary">Return</a></td>
+        {% else %}
+        <td>Returned</td>
+        {% endif %}
+      </tr>
+      {% empty %}
+      No Books to be collected today.
+    {% endfor %}
+    </tbody>
+  </table>
+<!-- {{ day }} -->
+
+{% endblock %}
