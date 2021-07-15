@@ -4,22 +4,103 @@ from django.http import HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from .models import *
 from django.db import IntegrityError
-import uuid
+from .helper import *
 from datetime import datetime,date, timedelta
 from django.contrib import messages
 
 # Create your views here.
 
-def random_string(string_length=7):
-    """Returns a random string of length string_length."""
-    random = str(uuid.uuid4())
-    random = random.upper()
-    random = random.replace("-","")
-    return random[0:string_length]
+# data table aman
 
 @decorators.login_required(login_url='/login')
 def index(request):
-    return render(request,"suser/dashboard.html")
+
+    books = BookLogs.objects.all()
+    cnt = books.count()
+
+    book_code = []
+    i = 0
+    while i < cnt:
+        b = books[i]
+        name = b.book_inventry
+        book_code.append(name)
+        i = i + 1
+    book_code = list(set(book_code))
+    # print(book_code)
+
+    dict = {}
+    ne_books = []
+    for bb in book_code:
+        code = BookInventry.objects.all().filter(book_uniqueid = bb)
+        one = code[0]
+        book_book = one.book
+        book_nme = book_book.book_name
+        ne_books.append(book_nme)
+
+    dict = {item:ne_books.count(item) for item in ne_books}
+    # print(dict)
+    topy = list(dict.values())
+    topx = list(dict.keys())
+    # print(topx,topy)
+
+
+    checkin = books.filter(checkback__isnull=True)
+    issued = checkin.count()
+
+    checkout = books.filter(checkback__isnull=False)
+    returned = checkout.count()
+
+    # Past 7 days checkin and checkout
+    aa = []   #date
+    data1 = []   #issued
+    data2 = []   #returnd
+    now = datetime.now()
+    for x in range(7):
+        d = now - timedelta(days=x)
+        aa.append(d.date())
+
+    for day in aa:
+        try:
+            x = BookLogs.objects.all().filter(checkback__isnull=True, due_date=day) #non-returned
+            data1.append(x.count())
+            y = BookLogs.objects.all().filter(checkback__isnull=False, due_date=day) #returned
+            data2.append(y.count())
+        except:
+            pass
+    lable = [l.strftime('%Y-%m-%d') for l in aa]
+    # print(lable,data1,data2)
+
+
+    #Past 5 Non-Returned books
+    log = BookLogs.objects.all().filter(checkback__isnull=True).order_by('-due_date')
+    aaa = []  # due date book return past
+    freq = []  # total book remaing
+    for x in range(5):
+        try:
+            logg = log[x].due_date
+            aaa.append(logg)
+            c = log.filter(due_date = logg).count()
+            freq.append(c)
+        except:
+            pass
+    date = [l.strftime('%Y-%m-%d') for l in aaa]
+    print(date,freq)
+
+    return render(request,"suser/dashboard.html",{
+        'issued': issued,
+        'returned': returned,
+    #top 5 books purchase 
+        'topx':topx,
+        'topy': topy,
+    # Past 7 days checkin and checkout
+        'lable': lable,
+        'data1': data1,
+        'data2': data2,
+    # Past Non-Returned books
+        'date': date,
+        'freq': freq,
+    })
+
 
 def loginuser(request):
     if not request.user.is_authenticated:
@@ -111,22 +192,7 @@ def bookcreate(request):
         "categories" : Categories.objects.all(),
     })
 
-@decorators.login_required(login_url='/login')
-def create_inven(bookname, author):
-    book = BookModel.objects.get(book_name = bookname, author = author)
-    i = 0
-    while(True):
-        if i== book.current_count:
-            break
-        temp = random_string()
-        a = BookInventry.objects.all().filter(book_uniqueid=temp)
-        if a.count() ==0:
-            inven = BookInventry(book= book ,book_uniqueid = temp)
-            inven.save()
-            i +=1
-            continue
-        else:
-            continue
+
 
 @decorators.login_required(login_url='/login')
 def booklist(request):
@@ -139,27 +205,46 @@ def bookdetail(request):
     #suraj : wrtie code here
     book_id = request.GET.get('bookid', None)
     book = BookModel.objects.get(pk = book_id)
-    book_inven = BookInventry.objects.all().filter(book = book)
-    log = []
+    book_inven = BookInventry.objects.all().filter(book = book, issued = True )
+    log_true = []
     for b in book_inven:
         temp = BookLogs.objects.all().filter(book_inventry = b)
         if temp.count() ==0:
             continue
         else:
-            log.append(temp)
+            # log_true.append(temp)
+            for i in temp:
+                log_true.append(i)
+
+
+    book_inven_false = BookInventry.objects.all().filter(book=book, issued=False)
+    log_false = []
+    for b in book_inven_false:
+        temp = BookLogs.objects.all().filter(book_inventry = b)
+        if temp.count() ==0:
+            continue
+        else:
+            # log_true.append(temp)
+            for i in temp:
+                log_false.append(i)
 
     return render(request,"suser/bookdetail.html",{
         "book": book,
-        "Logs": log,
-        "count": len(log)
+        "Logs": sort_this(log_true) + sort_this(log_false),
+        "count": len(log_true) + len(log_false)
 
     })
 
 @decorators.login_required(login_url='/login')
 def day_wise(request):
-    day = BookLogs.objects.all().filter(due_date= date.today())
-    return render(request, "suser/day.html",{
+    today = date.today()
+    yesterday = date.today() - timedelta(days=1)
+    start = date.today() + timedelta(days=-30)  # future change
+    day = BookLogs.objects.all().filter(due_date=today)
+    afterdate = BookLogs.objects.all().filter(checkback__isnull=True, due_date__range=[start, yesterday])
+    return render(request, "suser/day.html", {
         "day": day,
+        "afterdate": afterdate
     })
 
 @decorators.login_required(login_url='/login')
@@ -173,7 +258,7 @@ def returnbook(request):
 @decorators.login_required(login_url='/login')
 def Checkout(request):
     return render(request, 'suser/checkout.html',{
-    "books": BookModel.objects.all(),
+    "books": Categories.objects.all(),
     "user_name" : User.objects.all(),
     })
 
@@ -194,7 +279,7 @@ def BookCheckout(request):
         current_time = date.today()
         due_Date = date.today() + timedelta(days=7)
         if bookdata.current_count !=0:
-            data = BookLogs(user_id = name, book_inventry=coded, issue_day=current_time, due_date=due_Date)
+            data = BookLogs(user_id = name, book_inventry=coded, issue_day=current_time, due_date=due_Date , Transaction = str(date.today())[-1]+random_string(8)+str(date.today())[-2])
             data.save()
             new.issued = True
             new.save()
@@ -228,10 +313,30 @@ def rhere(request):
         log.book_inventry.save()
 
         log.save()
-        return render(request,"suser/returnbook.html",{
+        return render(request,"suser/day.html",{
             "book":log,
             "fee":total_fine,
+            "flag":True,
 
     })
+
+@decorators.login_required(login_url='/login')
+def userlist(request):
+    return render(request, "suser/userlist.html",{
+        'all_users': User.objects.all(),
+    })
+
+@decorators.login_required(login_url='/login')
+def userdetail(request):
+    id = request.GET.get('id', None)
+    if id is not None:
+        usr = User.objects.get(pk = id)
+        all_books = BookLogs.objects.all().filter(user_id = usr)
+
+        return render(request,"suser/userdetail.html",{
+            "userq": usr,
+            "booksu":all_books,
+        })
+
 
 
